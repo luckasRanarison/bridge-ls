@@ -1,16 +1,37 @@
 use crate::config::Config;
-use tower_lsp::{jsonrpc::Result, lsp_types::*, Client, LanguageServer};
+use dashmap::DashMap;
+use tempfile::tempfile;
+use std::{
+    fs::{self, File},
+    io::{Read, Write, Seek, SeekFrom},
+    path::Path,
+    process::{Command, Stdio, self},
+};
+use tower_lsp::{
+    jsonrpc::Result,
+    lsp_types::{lsif::Document, *},
+    Client, LanguageServer,
+};
 
 #[derive(Debug)]
 pub struct BridgeServer {
     config: Config,
     client: Client,
+    documents: DashMap<Url, String>,
 }
 
 impl BridgeServer {
     pub fn new(client: Client, config: Config) -> Self {
-        Self { client, config }
+        Self {
+            client,
+            config,
+            documents: DashMap::default(),
+        }
     }
+}
+
+impl BridgeServer {
+    pub fn handle_formatting(&self) {}
 }
 
 #[tower_lsp::async_trait]
@@ -36,12 +57,68 @@ impl LanguageServer for BridgeServer {
 
     async fn initialized(&self, _: InitializedParams) {
         self.client
-            .log_message(MessageType::INFO, "server initialized")
+            .log_message(MessageType::INFO, "Server initialized")
             .await;
     }
 
+    async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        let uri = params.text_document.uri.clone();
+        let document = params.text_document.text;
+
+        self.documents.insert(uri, document);
+        self.client
+            .log_message(MessageType::INFO, "File opened")
+            .await;
+    }
+
+    async fn did_change(&self, params: DidChangeTextDocumentParams) {
+        let uri = &params.text_document.uri;
+
+        if let Some(mut document) = self.documents.get_mut(uri) {
+            *document = params
+                .content_changes
+                .into_iter()
+                .next()
+                .map(|c| c.text)
+                .unwrap_or_default();
+        }
+    }
+
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
-        todo!()
+        let file_path = params.text_document.uri.path();
+        let file_path = Path::new(file_path);
+        let extension = file_path.extension().and_then(|e| e.to_str());
+
+        if let Some(extension) = extension {
+            let formatter = self
+                .config
+                .formatters
+                .values()
+                .find(|f| f.filetypes.iter().any(|e| e == extension));
+
+            if let Some(formatter) = formatter {
+                let document = self.documents.get(&params.text_document.uri).unwrap();
+                let mut file = tempfile().unwrap();
+                file.write_all(document.as_bytes()).unwrap();
+                file.seek(SeekFrom::Start(0)).unwrap();
+                let output = Command::new(&formatter.command)
+                    .args(&formatter.args)
+                    .stdin(Stdio::from(file))
+                    .output()
+                    .unwrap();
+                let result = String::from_utf8(output.stdout);
+                let end_line = document.lines().count();
+                let start_pos = Position::new(0, 0);
+                let end_pos = Position::new(end_line as u32, 0);
+
+                return Ok(Some(vec![TextEdit::new(
+                    Range::new(start_pos, end_pos),
+                    result.unwrap(),
+                )]));
+            }
+        }
+
+        Ok(None)
     }
 
     async fn diagnostic(
@@ -49,6 +126,13 @@ impl LanguageServer for BridgeServer {
         params: DocumentDiagnosticParams,
     ) -> Result<DocumentDiagnosticReportResult> {
         todo!()
+    }
+
+    async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        self.documents.remove(&params.text_document.uri);
+        self.client
+            .log_message(MessageType::INFO, "File closed")
+            .await;
     }
 
     async fn shutdown(&self) -> Result<()> {

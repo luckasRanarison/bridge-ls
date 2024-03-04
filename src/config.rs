@@ -3,17 +3,18 @@ use std::{collections::HashMap, env, fs};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct Config {
-    formatters: HashMap<String, FormatterOptions>,
+    pub formatters: HashMap<String, FormatterOptions>,
     // linters: HashMap<String, LinterOptions>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct FormatterOptions {
-    command: String,
-    args: Vec<String>,
-    to_stdin: bool,
-    cleanup_command: Option<String>,
+    pub command: String,
+    pub args: Vec<String>,
+    pub filetypes: Vec<String>,
+    pub to_stdin: bool,
+    pub cleanup_command: Option<String>,
 }
 
 pub fn read_config() -> Config {
@@ -36,7 +37,8 @@ mod tests {
                 "stylua": {
                     "command": "stylua",
                     "args": ["-"],
-                    "toStdin": true
+                    "filetypes": ["lua"]
+                    "toStdin": true,
                 }
             }
         }"#;
@@ -47,6 +49,7 @@ mod tests {
                 FormatterOptions {
                     command: "stylua".to_owned(),
                     args: vec!["-".to_owned()],
+                    filetypes: vec!["lua".to_owned()],
                     to_stdin: true,
                     cleanup_command: None,
                 },

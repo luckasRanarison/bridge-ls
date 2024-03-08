@@ -1,3 +1,4 @@
+use crate::utils::expand_args;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -74,28 +75,12 @@ impl FormatterConfig {
         file.write_all(document.as_bytes())?;
         file.seek(SeekFrom::Start(0))?;
         let output = Command::new(&self.command)
-            .args(&self.expand_args(file_path))
+            .args(expand_args(&self.args, file_path))
             .stdin(Stdio::from(file))
             .output()?;
         let result = String::from_utf8(output.stdout)?;
-        Ok(result)
-    }
 
-    fn expand_args(&self, file_path: &Path) -> Vec<String> {
-        self.args
-            .iter()
-            .map(|arg| match arg.as_str() {
-                "$filepath" => file_path
-                    .to_str()
-                    .map(|path| path.to_owned())
-                    .unwrap_or_default(),
-                "$filename" => file_path
-                    .file_name()
-                    .and_then(|f| f.to_str().map(|f| f.to_owned()))
-                    .unwrap_or_default(),
-                _ => arg.to_owned(),
-            })
-            .collect()
+        Ok(result)
     }
 }
 

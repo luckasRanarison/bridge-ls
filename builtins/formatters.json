@@ -1,0 +1,33 @@
+{
+  "prettierd": {
+    "command": "prettierd",
+    "args": [
+      "$filename"
+    ],
+    "filetypes": [
+      "js",
+      "ts",
+      "jsx",
+      "tsx",
+      "json",
+      "yaml",
+      "yml",
+      "css",
+      "scss",
+      "html",
+      "md"
+    ],
+    "toStdin": true,
+    "cleanup": "pkill prettierd"
+  },
+  "stylua": {
+    "command": "stylua",
+    "args": [
+      "-"
+    ],
+    "filetypes": [
+      "lua"
+    ],
+    "toStdin": true
+  }
+}

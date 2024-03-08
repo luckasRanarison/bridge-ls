@@ -1,17 +1,7 @@
 use crate::config::Config;
 use dashmap::DashMap;
-use tempfile::tempfile;
-use std::{
-    fs::{self, File},
-    io::{Read, Write, Seek, SeekFrom},
-    path::Path,
-    process::{Command, Stdio, self},
-};
-use tower_lsp::{
-    jsonrpc::Result,
-    lsp_types::{lsif::Document, *},
-    Client, LanguageServer,
-};
+use std::path::Path;
+use tower_lsp::{jsonrpc::Result, lsp_types::*, Client, LanguageServer};
 
 #[derive(Debug)]
 pub struct BridgeServer {
@@ -42,9 +32,6 @@ impl LanguageServer for BridgeServer {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(
                     TextDocumentSyncKind::FULL,
                 )),
-                diagnostic_provider: Some(DiagnosticServerCapabilities::Options(
-                    DiagnosticOptions::default(),
-                )),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
@@ -67,7 +54,10 @@ impl LanguageServer for BridgeServer {
 
         self.documents.insert(uri, document);
         self.client
-            .log_message(MessageType::INFO, "File opened")
+            .log_message(
+                MessageType::INFO,
+                format!("File opened: {}", params.text_document.uri),
+            )
             .await;
     }
 
@@ -88,50 +78,40 @@ impl LanguageServer for BridgeServer {
         let file_path = params.text_document.uri.path();
         let file_path = Path::new(file_path);
         let extension = file_path.extension().and_then(|e| e.to_str());
+        let document = self.documents.get(&params.text_document.uri);
+        let formatter = extension.and_then(|e| self.config.get_formatter(e));
 
-        if let Some(extension) = extension {
-            let formatter = self
-                .config
-                .formatters
-                .values()
-                .find(|f| f.filetypes.iter().any(|e| e == extension));
+        if let Some((document, formatter)) = document.zip(formatter) {
+            let result = formatter.format(document.as_str(), file_path);
 
-            if let Some(formatter) = formatter {
-                let document = self.documents.get(&params.text_document.uri).unwrap();
-                let mut file = tempfile().unwrap();
-                file.write_all(document.as_bytes()).unwrap();
-                file.seek(SeekFrom::Start(0)).unwrap();
-                let output = Command::new(&formatter.command)
-                    .args(&formatter.args)
-                    .stdin(Stdio::from(file))
-                    .output()
-                    .unwrap();
-                let result = String::from_utf8(output.stdout);
-                let end_line = document.lines().count();
-                let start_pos = Position::new(0, 0);
-                let end_pos = Position::new(end_line as u32, 0);
+            match result {
+                Ok(result) => {
+                    let end_line = document.lines().count();
+                    let start_pos = Position::new(0, 0);
+                    let end_pos = Position::new(end_line as u32, 0);
+                    let range = Range::new(start_pos, end_pos);
+                    let edits = vec![TextEdit::new(range, result)];
 
-                return Ok(Some(vec![TextEdit::new(
-                    Range::new(start_pos, end_pos),
-                    result.unwrap(),
-                )]));
+                    return Ok(Some(edits));
+                }
+                Err(err) => {
+                    self.client
+                        .log_message(MessageType::ERROR, err.to_string())
+                        .await
+                }
             }
         }
 
         Ok(None)
     }
 
-    async fn diagnostic(
-        &self,
-        params: DocumentDiagnosticParams,
-    ) -> Result<DocumentDiagnosticReportResult> {
-        todo!()
-    }
-
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
         self.documents.remove(&params.text_document.uri);
         self.client
-            .log_message(MessageType::INFO, "File closed")
+            .log_message(
+                MessageType::INFO,
+                format!("File closed: {}", params.text_document.uri),
+            )
             .await;
     }
 

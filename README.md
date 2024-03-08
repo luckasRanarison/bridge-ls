@@ -11,9 +11,6 @@ An attempt to write a general purpose language server inspired by [null-ls](http
 - [ ] Linting
 - [ ] Snippets
 
-> [!TIP]
-> Some default configurations are provided in [builtins](./builtins)
-
 ## Installation
 
 > [!IMPORTANT]
@@ -57,6 +54,9 @@ The following variables can be used with `args`:
 
 - `$filename`: expands to the relative filename.
 - `$filepath`: expands to the full filepath.
+
+> [!TIP]
+> See the [builtins](./builtins) for reference
 
 ## Usage
 

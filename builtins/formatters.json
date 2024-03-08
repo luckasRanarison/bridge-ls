@@ -20,6 +20,19 @@
     "toStdin": true,
     "cleanup": "pkill prettierd"
   },
+  "rustfmt": {
+    "command": "rustfmt",
+    "args": [
+      "--edition",
+      "2021",
+      "--emit",
+      "stdout"
+    ],
+    "filetypes": [
+      "rs"
+    ],
+    "toStdin": true
+  },
   "stylua": {
     "command": "stylua",
     "args": [
